@@ -1,4 +1,4 @@
-# djangoチュートリアル #17
+# djangoチュートリアル #18
 
 レスポンス基礎編〜HTML以外のデータを表示してみよう！〜
 
@@ -10,41 +10,16 @@
 
 Paizaでdjagoだけにチェックを入れてサーバーを作成して下さい。
 
-### プロジェクト作成
-
-作成
+### 前回のプロジェクトのダウンロード
 
 ```sh
-django-admin startproject pj_response
+git clone https://github.com/shun-rec/django-website-17.git
 ```
 
 フォルダ移動
 
 ```sh
-cd pj_response
-```
-
-### アプリ作成
-
-作成
-
-```sh
-python manage.py startapp sample
-```
-
-全体設定の編集
-
-`pj_response/settings.py`
-
-```py
-ALLOWED_HOSTS = ['*]
-```
-
-```py
-INSTALLED_APPS = [
-    ...
-    'sample',
-]
+cd django-website-17
 ```
 
 ### 開発サーバーの起動
@@ -53,74 +28,140 @@ INSTALLED_APPS = [
 python manage.py runserver
 ```
 
-## 最も基本的なレスポンス
+## CSVファイルをダウンロードしてみよう
 
-`sample/views.py`
+### Viewの作成
+
+`sample/views.py`に以下を追記。
 
 ```py
-from django.views.generic import View
-from django.http import HttpResponse
+import csv
+
+header = ['ID', '名前', '年齢']
+
+people = [
+    ('1', 'Hoge', 10),
+    ('2', 'Fuga', 18),
+    ('3', 'Foo', 23),
+]
 
 
-class IndexView(View):
+class CSVView(View):
     def get(self, request):
-        return HttpResponse("hello")
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="mycsv.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow(header)
+        writer.writerows(people)
+        return response
 ```
 
-URL設定
+### URL設定
 
-`pj_response/urls.py`
+`pj_response/urls.py`の以下の部分を以下のように修正して下さい。
 
 ```py
-from django.contrib import admin
-from django.urls import path
-
-from sample.views import IndexView
+from sample import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', IndexView.as_view()),
+    path('', views.IndexView.as_view()),
+    path('csv/', views.CSVView.as_view()),
 ]
 ```
 
-getというのはブラウザからのリクエストのGETを受け取るメソッドです。
+### 動かしてみよう
 
-他にpost, deleteなどがあります。
+/csv/にアクセスして、mycsv.csvというファイルがダウンロードされたらOKです。
 
-これまで使っていたTemplateViewもListViewもDetailViewもすべて内部でこのようにgetで文字列を返しています。
+## PDFをダウンロードしてみよう
 
-HTMLを表す文字列返せばウェブページとして表示されるということになります。
+### PDFライブラリのインストール
 
-実際にブラウザから送られる様子を見てみましょう。
+コンソールを開いて、PDFを生成するための`reportlab`というPythonライブラリをインストールします。
 
-## HTMLを表示してみよう
-
-`sample/views.py`を以下のように修正
-
-```py
-from django.views.generic import View
-from django.http import HttpResponse
-
-
-body = """
-<h1>Hello</h1>
-<ol>
-  <li>りんご</li>
-  <li>ばなな</li>
-  <li>いちご</li>
-</ol>
-"""
-
-class IndexView(View):
-    def get(self, request):
-        return HttpResponse(body)
+```sh
+pip install reportlab
 ```
 
-ブラウザで確認してみると、HTMLとして表示されます。
+### Viewの作成
 
-このように世の中のウェブサイトはすべてHTMLという文字列をブラウザに渡すことによって表示されています。
+`sample/views.py`に以下を追記します。
 
-どんなに複雑に見えるYouTubeやTwitterなども同様です。
+```py
+import io
+from django.http import FileResponse
+from reportlab.pdfgen import canvas
 
-この文字列部分を色々変えてあげると、CSVやPDF、動画などあらゆるデータを表示することが出来ます。
+class PDFView(View):
+    def get(self, request):
+        buffer = io.BytesIO()
+        p = canvas.Canvas(buffer)
+        
+        # この部分を変えると内容が変わる
+        p.drawString(50, 800, "Hello PDF!")
+        
+        p.showPage()
+        p.save()
+        buffer.seek(0)
+        return FileResponse(buffer, as_attachment=True, filename='hello.pdf')
+```
 
+### URL設定
+
+`pj_response/urls.py`の`urlpatterns`に以下を追記します。
+
+```py
+    path('pdf/', views.PDFView.as_view()),
+```
+
+### 動かしてみよう
+
+/pdf/にアクセスして、`Hello PDF!`と書かれたPDFファイルがダウンロードされたらOKです。
+
+## JSONをダウンロードしてみよう
+
+JSONというフォーマットはWebページやアプリと通信するために最もよく使われるデータです。
+
+Webページから実際に取得する様子を観てみましょう。
+
+### Viewの作成
+
+`sample/views.py`に以下を追記します。
+
+```py
+from django.http import JsonResponse
+
+class PeopleAPIView(View):
+    def get(self, request):
+        people_ret = []
+        for p in people:
+            people_ret.append({
+                'id': p[0],
+                'name': p[1],
+                'age': p[2],
+            })
+        data = {
+            "people": people_ret
+        }
+        return JsonResponse(data=data)
+```
+
+### URL設定
+
+`pj_response/urls.py`の`urlpatterns`に以下を追記します。
+
+```py
+    path('api/people/', views.PeopleAPIView.as_view()),
+```
+
+### 動かしてみよう
+
+ブラウザでトップページ（`/`）を開いて下さい。
+
+開発者用ツールを立ち上げて、コンソールから以下のJavascriptを実行してみましょう。
+
+```js
+fetch("/api/people/").then((res) => res.json()).then(console.log)
+```
